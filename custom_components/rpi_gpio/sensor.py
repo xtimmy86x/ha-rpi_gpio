@@ -37,6 +37,8 @@ CONF_PULSES_PER_REV = "pulses_per_rev"
 DEFAULT_PULSES_PER_REV = 2
 CONF_UPDATE_INTERVAL = "update_interval"
 DEFAULT_UPDATE_INTERVAL = 2  # seconds
+CONF_TACH_EDGE = "edge"
+DEFAULT_TACH_EDGE = "FALLING"
 
 PLATFORM_SCHEMA = vol.All(
     PLATFORM_SCHEMA.extend({
@@ -66,7 +68,9 @@ PLATFORM_SCHEMA = vol.All(
                 vol.Required(CONF_NAME): cv.string,
                 vol.Required(CONF_PORT): cv.positive_int,
                 vol.Optional(CONF_PULL_MODE, default=DEFAULT_PULL_MODE): vol.In(BIAS.keys()),
-                vol.Optional(CONF_BOUNCETIME, default=2): cv.positive_int,
+                vol.Optional(CONF_BOUNCETIME, default=0): vol.All(
+                    vol.Coerce(int), vol.Range(min=0, max=1000)),
+                vol.Optional(CONF_TACH_EDGE, default=DEFAULT_TACH_EDGE): vol.In(("RISING", "FALLING")),
                 vol.Optional(CONF_PULSES_PER_REV, default=DEFAULT_PULSES_PER_REV): cv.positive_int,
                 vol.Optional(CONF_UPDATE_INTERVAL, default=DEFAULT_UPDATE_INTERVAL): vol.All(
                     vol.Coerce(int), vol.Range(min=1, max=60)),
@@ -134,6 +138,7 @@ async def async_setup_platform(
                     tach.get(CONF_UNIQUE_ID) or f"{DOMAIN}_{tach[CONF_PORT]}_{tach[CONF_NAME].lower().replace(' ', '_')}",
                     tach.get(CONF_PULL_MODE),
                     tach.get(CONF_BOUNCETIME),
+                    tach.get(CONF_TACH_EDGE),
                     tach.get(CONF_PULSES_PER_REV),
                     tach.get(CONF_UPDATE_INTERVAL),
                 )
@@ -278,21 +283,22 @@ class GPIODTachometerSensor(SensorEntity):
     _attr_native_unit_of_measurement = "RPM"
     _attr_icon = "mdi:fan"
 
-    def __init__(self, hub, name, port, unique_id, bias, debounce, pulses_per_rev, update_interval):
-        _LOGGER.debug(f"GPIODTachometerSensor init: port={port} name={name} ppr={pulses_per_rev} interval={update_interval}s")
+    def __init__(self, hub, name, port, unique_id, bias, debounce, edge, pulses_per_rev, update_interval):
+        _LOGGER.debug(f"GPIODTachometerSensor init: port={port} name={name} edge={edge} ppr={pulses_per_rev} interval={update_interval}s")
         self._hub = hub
         self._attr_name = name
         self._attr_unique_id = unique_id
         self._port = port
         self._bias = bias
         self._debounce = debounce
+        self._edge = edge
         self._pulses_per_rev = pulses_per_rev
         self._update_interval = update_interval  # seconds
         self._attr_native_value = 0
         self._pulse_count = 0
         self._unsub_timer = None
-        # Reuse add_counter with RISING edge – no active_low needed for tach signal
-        self._line = self._hub.add_counter(port, False, bias, debounce, "RISING")
+        # Fan tach outputs are typically open-collector; counting FALLING edges is usually the most stable default.
+        self._line = self._hub.add_counter(port, False, bias, debounce, edge)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
