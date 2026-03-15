@@ -1,3 +1,16 @@
 reload:
   name: Reload
   description: Reload all rpi_gpio entities.
+
+reset_sensor:
+  name: Reset sensor
+  description: Reset a counter or encoder sensor value back to zero.
+  fields:
+    entity_id:
+      name: Entity
+      description: The counter or encoder sensor entity to reset.
+      required: true
+      selector:
+        entity:
+          domain: sensor
+          integration: rpi_gpio

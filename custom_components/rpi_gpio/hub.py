@@ -26,7 +26,12 @@ DRIVE = {
     "OPEN_DRAIN": Drive.OPEN_DRAIN, 
     "OPEN_SOURCE": Drive.OPEN_SOURCE, 
     "PUSH_PULL": Drive.PUSH_PULL, 
-} 
+}
+EDGE = {
+    "RISING": Edge.RISING,
+    "FALLING": Edge.FALLING,
+    "BOTH": Edge.BOTH,
+}
 
 class Hub:
 
@@ -146,4 +151,39 @@ class Hub:
         relay_line = self.add_switch(relay_port, relay_active_low, relay_bias, relay_drive, False)
         state_line, current_is_on = self.add_sensor(state_port, state_active_low, state_bias, 50)
         return relay_line, state_line, current_is_on
+
+    def add_counter(self, port, active_low, bias, debounce, edge) -> gpiod.LineRequest:
+        _LOGGER.debug(f"add_counter - port: {port}, active_low: {active_low}, bias: {bias}, debounce: {debounce}, edge: {edge}")
+        self.verify_online()
+        self.verify_port_ready(port)
+
+        line_request = self._chip.request_lines(
+            consumer=DOMAIN,
+            config={port: gpiod.LineSettings(
+                direction=Direction.INPUT,
+                edge_detection=EDGE[edge],
+                bias=BIAS[bias],
+                active_low=active_low,
+                debounce_period=timedelta(milliseconds=debounce),
+                event_clock=Clock.REALTIME)})
+        _LOGGER.debug(f"add_counter line_request: {line_request}")
+        return line_request
+
+    def add_encoder(self, port_a, port_b, bias, debounce) -> gpiod.LineRequest:
+        _LOGGER.debug(f"add_encoder - port_a: {port_a}, port_b: {port_b}, bias: {bias}, debounce: {debounce}")
+        self.verify_online()
+        self.verify_port_ready(port_a)
+        self.verify_port_ready(port_b)
+
+        line_settings = gpiod.LineSettings(
+            direction=Direction.INPUT,
+            edge_detection=Edge.BOTH,
+            bias=BIAS[bias],
+            debounce_period=timedelta(milliseconds=debounce),
+            event_clock=Clock.REALTIME)
+        line_request = self._chip.request_lines(
+            consumer=DOMAIN,
+            config={port_a: line_settings, port_b: line_settings})
+        _LOGGER.debug(f"add_encoder line_request: {line_request}")
+        return line_request
 
